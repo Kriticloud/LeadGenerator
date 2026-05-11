@@ -12,31 +12,37 @@ export function downloadLeadsAsCSV(leads: Lead[]) {
   const headers = [
     "Name",
     "Company",
-    "Role",
     "Industry",
     "Website",
-    "Description",
-    "Reasoning",
-    "Confidence",
+    "Lead Score",
+    "Urgency Score",
+    "Probability",
+    "Business Size",
     "Email",
     "Phone",
     "LinkedIn",
-    "Twitter"
+    "Instagram",
+    "Address",
+    "Audit: Issues",
+    "Outreach Angle"
   ];
 
   const rows = leads.map(l => [
     l.name,
     l.company,
-    l.role || "",
     l.industry,
     l.website || "",
-    l.description,
-    l.reasoning,
-    l.confidence,
+    l.leadScore,
+    l.urgencyScore,
+    l.probability,
+    l.businessSize,
     l.contactInfo?.email || "",
     l.contactInfo?.phone || "",
     l.contactInfo?.linkedin || "",
-    l.contactInfo?.twitter || ""
+    l.contactInfo?.instagram || "",
+    l.contactInfo?.address || "",
+    (l.audit?.issues || []).join("; "),
+    l.outreach?.bestAngle || ""
   ]);
 
   const csvContent = [

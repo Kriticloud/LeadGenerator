@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Lead Validation
+    function isValidLead(data) {
+      return data.keys().hasAll(['id', 'name', 'company', 'status', 'leadScore', 'urgencyScore', 'createdAt', 'updatedAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.company is string && data.company.size() <= 200 &&
+             data.status in ['new', 'contacted', 'interested', 'follow-up', 'closed', 'rejected'] &&
+             data.leadScore is number && data.leadScore >= 0 && data.leadScore <= 100 &&
+             data.urgencyScore is number && data.urgencyScore >= 0 && data.urgencyScore <= 100 &&
+             data.createdAt == request.time || data.createdAt is string; // Allow string if created by AI service logic
+    }
+
+    match /leads/{leadId} {
+      allow read: if true; // Public for this dashboard version, can be restricted later
+      
+      allow create: if isSignedIn() && isValidId(leadId) && isValidLead(incoming());
+      
+      allow update: if isSignedIn() && isValidId(leadId) && (
+        // Action: Update Status
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt', 'history']) && 
+         incoming().status in ['new', 'contacted', 'interested', 'follow-up', 'closed', 'rejected']) ||
+        // Action: Add Note
+        (incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'updatedAt', 'history'])) ||
+        // Action: Set Reminder
+        (incoming().diff(existing()).affectedKeys().hasOnly(['followUpAt', 'reminderSent', 'updatedAt', 'history'])) ||
+        // Action: Full Update
+        (isValidLead(incoming()) && incoming().id == existing().id && incoming().createdAt == existing().createdAt)
+      );
+      
+      allow delete: if isSignedIn() && isValidId(leadId);
+    }
+
+    match /settings/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+  }
+}

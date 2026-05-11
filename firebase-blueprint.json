@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "Lead": {
+      "title": "Lead",
+      "description": "A business lead for web design and branding services.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "company": { "type": "string" },
+        "role": { "type": "string" },
+        "industry": { "type": "string" },
+        "website": { "type": "string" },
+        "description": { "type": "string" },
+        "reasoning": { "type": "string" },
+        "signal": { "type": "string" },
+        "confidence": { "type": "number" },
+        "status": { "type": "string", "enum": ["new", "contacted", "interested", "follow-up", "closed", "rejected"] },
+        "leadScore": { "type": "number" },
+        "urgencyScore": { "type": "number" },
+        "probability": { "type": "number" },
+        "businessSize": { "type": "string" },
+        "budgetPotential": { "type": "string" },
+        "contactInfo": {
+          "type": "object",
+          "properties": {
+            "email": { "type": "string" },
+            "phone": { "type": "string" },
+            "linkedin": { "type": "string" },
+            "twitter": { "type": "string" },
+            "instagram": { "type": "string" },
+            "facebook": { "type": "string" },
+            "address": { "type": "string" }
+          }
+        },
+        "audit": {
+          "type": "object",
+          "properties": {
+            "outdatedDesign": { "type": "boolean" },
+            "noSSL": { "type": "boolean" },
+            "poorMobile": { "type": "boolean" },
+            "slowSpeed": { "type": "boolean" },
+            "brandingConsistency": { "type": "string", "enum": ["poor", "fair", "good"] },
+            "issues": { "type": "array", "items": { "type": "string" } },
+            "suggestedImprovements": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "outreach": {
+          "type": "object",
+          "properties": {
+            "bestAngle": { "type": "string" },
+            "coldMessage": { "type": "string" },
+            "redesignStrategy": { "type": "string" },
+            "estimatedImpact": { "type": "string" }
+          }
+        },
+        "history": { "type": "array", "items": { "$ref": "LeadActivity" } },
+        "notes": { "type": "string" },
+        "followUpAt": { "type": "string", "format": "date-time" },
+        "reminderSent": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "company", "status", "createdAt", "updatedAt"]
+    },
+    "LeadActivity": {
+      "title": "LeadActivity",
+      "description": "An interaction or change event for a lead.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" }
+      }
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "User preferences for the lead generation agent.",
+      "type": "object",
+      "properties": {
+        "agencyName": { "type": "string" },
+        "targetIndustries": { "type": "array", "items": { "type": "string" } },
+        "targetLocations": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "firestore": {
+    "/leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Global collection of leads."
+    },
+    "/settings/{userId}": {
+      "schema": "Settings",
+      "description": "User specific settings."
+    }
+  }
+}
