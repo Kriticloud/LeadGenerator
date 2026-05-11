@@ -953,8 +953,26 @@ export default function LeadPulse() {
                           onClick={() => {
                             navigator.clipboard.writeText(selectedLead.outreach.coldMessage);
                           }}
-                          className="absolute bottom-4 right-4 p-2 bg-accent text-white rounded-lg shadow-lg hover:bg-accent-hover transition-all"
-                          title="Copy to Clipboard"
+                          className="absolute top-10 right-4 p-2 bg-accent text-white rounded-lg shadow-lg hover:bg-accent-hover transition-all"
+                          title="Copy Email Copy"
+                        >
+                          <Save className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="relative">
+                        <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                          <MessageCircle className="w-3 h-3" /> WhatsApp Opener
+                        </div>
+                        <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 font-sans text-xs text-slate-300 italic leading-relaxed">
+                          "{selectedLead.outreach.whatsappMessage}"
+                        </div>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedLead.outreach.whatsappMessage);
+                          }}
+                          className="absolute top-10 right-4 p-2 bg-emerald-500 text-white rounded-lg shadow-lg hover:bg-emerald-600 transition-all"
+                          title="Copy WhatsApp Copy"
                         >
                           <Save className="w-4 h-4" />
                         </button>
@@ -1020,7 +1038,8 @@ export default function LeadPulse() {
                 <button 
                   onClick={() => {
                     const phone = selectedLead.contactInfo.phone?.replace(/\D/g, '');
-                    if (phone) window.open(`https://wa.me/${phone}`, '_blank');
+                    const message = encodeURIComponent(selectedLead.outreach.whatsappMessage);
+                    if (phone) window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
                   }}
                   disabled={!selectedLead.contactInfo.phone}
                   className="flex items-center justify-center gap-2 py-3 bg-emerald-500 text-white rounded-xl text-xs font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-30 disabled:grayscale"
@@ -1029,7 +1048,9 @@ export default function LeadPulse() {
                 </button>
                 <button 
                   onClick={() => {
-                    window.location.href = `mailto:${selectedLead.contactInfo.email}?subject=Redesign Proposal for ${selectedLead.company}`;
+                    const subject = encodeURIComponent(`Question about ${selectedLead.company}'s Digital Presence`);
+                    const body = encodeURIComponent(selectedLead.outreach.coldMessage);
+                    window.location.href = `mailto:${selectedLead.contactInfo.email}?subject=${subject}&body=${body}`;
                   }}
                   disabled={!selectedLead.contactInfo.email}
                   className="flex items-center justify-center gap-2 py-3 bg-accent text-white rounded-xl text-xs font-bold hover:bg-accent-hover transition-all shadow-lg shadow-accent/20 disabled:opacity-30"
@@ -1125,19 +1146,41 @@ export default function LeadPulse() {
                   <FileSpreadsheet className="w-3.5 h-3.5" /> Export Selection
                 </button>
 
-                <button 
-                  onClick={() => {
-                    const selected = leads.filter(l => selectedIds.has(l.id));
-                    selected.forEach((lead, idx) => {
-                      setTimeout(() => {
-                        window.location.href = `mailto:${lead.contactInfo.email}?subject=Redesign Proposal for ${lead.company}&body=${encodeURIComponent(lead.outreach.coldMessage)}`;
-                      }, idx * 1000);
-                    });
-                  }}
-                  className="px-6 py-2 bg-accent text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-accent-hover transition-all shadow-lg shadow-accent/20 flex items-center gap-2"
-                >
-                  <Send className="w-3.5 h-3.5" /> Agent Blast
-                </button>
+                <div className="flex bg-slate-950 border border-border rounded-lg p-1">
+                  <button 
+                    onClick={() => {
+                      const selected = leads.filter(l => selectedIds.has(l.id));
+                      selected.forEach((lead, idx) => {
+                        if (lead.contactInfo.email) {
+                          setTimeout(() => {
+                            window.open(`mailto:${lead.contactInfo.email}?subject=Redesign Proposal for ${lead.company}&body=${encodeURIComponent(lead.outreach.coldMessage)}`, '_blank');
+                          }, idx * 1000);
+                        }
+                      });
+                    }}
+                    className="px-4 py-2 text-white rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-accent transition-all flex items-center gap-2"
+                    title="Bulk Email"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const selected = leads.filter(l => selectedIds.has(l.id));
+                      selected.forEach((lead, idx) => {
+                        const phone = lead.contactInfo.phone?.replace(/\D/g, '');
+                        if (phone) {
+                          setTimeout(() => {
+                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lead.outreach.whatsappMessage)}`, '_blank');
+                          }, idx * 1000);
+                        }
+                      });
+                    }}
+                    className="px-4 py-2 text-white rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500 transition-all flex items-center gap-2"
+                    title="Bulk WhatsApp"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               <button 

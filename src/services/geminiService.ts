@@ -39,6 +39,8 @@ export async function findLeads(query: string): Promise<Lead[]> {
     - If a specific city is not provided, look globally or in major tech hubs.
     - DO NOT return 0 leads unless the query is completely nonsensical. Find similar alternatives if exact matches aren't found.
 
+    - Outreach Strategy: Provide both a focused cold email draft AND a punchy WhatsApp/SMS opener.
+    
     Output MUST be valid JSON according to the schema. Be specific and data-driven. Do not hallucinate contact details; if you can't find them, leave them null but collect the Website URL.
   `;
 
@@ -109,7 +111,8 @@ export async function findLeads(query: string): Promise<Lead[]> {
               type: Type.OBJECT,
               properties: {
                 bestAngle: { type: Type.STRING },
-                coldMessage: { type: Type.STRING },
+                coldMessage: { type: Type.STRING, description: "Professional cold email draft." },
+                whatsappMessage: { type: Type.STRING, description: "Punchy, casual WhatsApp/SMS opener for direct outreach." },
                 redesignStrategy: { type: Type.STRING },
                 estimatedImpact: { type: Type.STRING }
               }
@@ -130,6 +133,10 @@ export async function findLeads(query: string): Promise<Lead[]> {
     return results.map((l: any) => ({
       ...l,
       id: Math.random().toString(36).substr(2, 9),
+      outreach: {
+        ...l.outreach,
+        whatsappMessage: l.outreach.whatsappMessage || `Hi ${l.name || 'there'} from ${l.company}, I noticed some exciting opportunities to level up your website at ${l.website}. Would you be open to a quick chat about a redesign strategy?`
+      },
       status: 'new' as LeadStatus,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

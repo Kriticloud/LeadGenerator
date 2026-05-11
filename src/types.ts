@@ -55,6 +55,7 @@ export interface Lead {
     coldMessage: string;
     redesignStrategy: string;
     estimatedImpact: string;
+    whatsappMessage: string;
   };
 
   sourceUrl?: string;
