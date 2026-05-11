@@ -25,7 +25,92 @@ export default function LeadPulse() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filterStatus, setFilterStatus] = useState<LeadStatus | 'all'>('all');
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const selectAll = () => {
+    if (selectedIds.size === filteredLeads.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredLeads.map(l => l.id)));
+    }
+  };
+
+  const handleBulkStatusUpdate = async (status: LeadStatus) => {
+    setIsBulkUpdating(true);
+    try {
+      const promises = Array.from(selectedIds).map(async (id) => {
+        const leadRef = doc(db, 'leads', id);
+        const lead = leads.find(l => l.id === id);
+        if (!lead) return;
+        
+        const newActivity: LeadActivity = {
+          type: 'status_change',
+          timestamp: new Date().toISOString(),
+          note: `Bulk status update to ${status}`
+        };
+
+        return updateDoc(leadRef, {
+          status,
+          updatedAt: new Date().toISOString(),
+          history: [...(lead.history || []), newActivity]
+        });
+      });
+      await Promise.all(promises);
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error("Bulk update failed:", error);
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleBulkNote = async (note: string) => {
+    if (!note.trim()) return;
+    setIsBulkUpdating(true);
+    try {
+      const promises = Array.from(selectedIds).map(async (id) => {
+        const leadRef = doc(db, 'leads', id);
+        const lead = leads.find(l => l.id === id);
+        if (!lead) return;
+        
+        const newActivity: LeadActivity = {
+          type: 'note_added',
+          timestamp: new Date().toISOString(),
+          note: `Bulk Note: ${note}`
+        };
+
+        return updateDoc(leadRef, {
+          notes: lead.notes ? `${lead.notes}\n\n${note}` : note,
+          updatedAt: new Date().toISOString(),
+          history: [...(lead.history || []), newActivity]
+        });
+      });
+      await Promise.all(promises);
+      setSelectedIds(new Set());
+    } catch (error) {
+           console.error("Bulk note failed:", error);
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  const handleBulkCSV = () => {
+    const selectedLeads = leads.filter(l => selectedIds.has(l.id));
+    downloadLeadsAsCSV(selectedLeads);
+  };
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [reminders, setReminders] = useState<Lead[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -445,11 +530,24 @@ export default function LeadPulse() {
         <main className="flex-1 overflow-auto bg-bg p-8">
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center justify-between mb-8">
-              <div>
-                <h2 className="text-2xl font-display font-bold text-slate-100">Scouted Intelligence</h2>
-                <p className="text-sm text-slate-500 mt-1">
-                  Showing {filteredLeads.length} leads matching your current criteria.
-                </p>
+              <div className="flex items-center gap-6">
+                <div>
+                  <h2 className="text-2xl font-display font-bold text-slate-100">Scouted Intelligence</h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    Showing {filteredLeads.length} leads matching your current criteria.
+                  </p>
+                </div>
+                {filteredLeads.length > 0 && (
+                  <button 
+                    onClick={selectAll}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-border rounded-lg text-[10px] font-bold text-slate-400 hover:text-accent transition-all uppercase tracking-widest"
+                  >
+                    <div className={cn("w-3 h-3 rounded border flex items-center justify-center transition-all", selectedIds.size === filteredLeads.length ? "bg-accent border-accent" : "border-slate-600")}>
+                      {selectedIds.size === filteredLeads.length && <CheckCircle2 className="w-2.5 h-2.5 text-white" />}
+                    </div>
+                    {selectedIds.size === filteredLeads.length ? 'Deselect All' : 'Select Page'}
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-lg">
@@ -531,9 +629,21 @@ export default function LeadPulse() {
                     onClick={() => setSelectedLeadId(lead.id)}
                     className={cn(
                       "dashboard-card group cursor-pointer relative overflow-hidden",
-                      selectedLeadId === lead.id && "border-accent ring-1 ring-accent/30"
+                      selectedLeadId === lead.id && "border-accent ring-1 ring-accent/30",
+                      selectedIds.has(lead.id) && "ring-2 ring-accent border-accent bg-accent/5"
                     )}
                   >
+                    {/* Selection Checkbox */}
+                    <div 
+                      onClick={(e) => toggleSelect(lead.id, e)}
+                      className={cn(
+                        "absolute top-4 right-4 w-5 h-5 rounded-md border flex items-center justify-center transition-all z-10",
+                        selectedIds.has(lead.id) ? "bg-accent border-accent" : "border-border bg-slate-900 group-hover:border-slate-500"
+                      )}
+                    >
+                      {selectedIds.has(lead.id) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                    </div>
+
                     <div className="flex justify-between items-start mb-4">
                       <div className={cn("status-badge capitalize", `status-${lead.status}`)}>
                         {lead.status}
@@ -793,10 +903,18 @@ export default function LeadPulse() {
 
                     <div className="space-y-4">
                       <div>
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block">Critical Issues</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedLead.audit.issues.map((issue, idx) => (
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block">Website Problems</span>
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {selectedLead.audit.websiteProblems?.map((issue, idx) => (
                             <span key={idx} className="px-2 py-1 bg-danger/10 text-danger text-[10px] font-bold rounded-lg border border-danger/20">
+                              {issue}
+                            </span>
+                          ))}
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block">Branding Issues</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedLead.audit.brandingIssues?.map((issue, idx) => (
+                            <span key={idx} className="px-2 py-1 bg-amber-500/10 text-amber-500 text-[10px] font-bold rounded-lg border border-amber-500/20">
                               {issue}
                             </span>
                           ))}
@@ -949,6 +1067,85 @@ export default function LeadPulse() {
             <div>
               <p className="text-sm font-bold text-white leading-none mb-1">Agent Scout in Progress</p>
               <p className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">Saving high-value intelligence to encrypted core...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Bulk Action Bar */}
+      <AnimatePresence>
+        {selectedIds.size > 0 && (
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: -32, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="fixed bottom-0 left-1/2 -translate-x-1/2 min-w-[600px] z-[60]"
+          >
+            <div className="bg-slate-900/90 backdrop-blur-xl border border-accent/50 p-4 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center justify-between gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center text-white font-bold shadow-lg">
+                  {selectedIds.size}
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Leads Selected</h4>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ready for Batch Operations</p>
+                </div>
+              </div>
+
+              <div className="h-8 w-px bg-slate-800 mx-2"></div>
+
+              <div className="flex items-center gap-2">
+                <select 
+                  onChange={(e) => handleBulkStatusUpdate(e.target.value as LeadStatus)}
+                  className="bg-slate-950 border border-border px-3 py-1.5 rounded-lg text-[10px] font-bold text-slate-300 outline-none hover:border-accent transition-all uppercase"
+                  disabled={isBulkUpdating}
+                >
+                  <option value="">Update Status</option>
+                  <option value="contacted">Mark Contacted</option>
+                  <option value="interested">Mark Interested</option>
+                  <option value="follow-up">Mark Follow-up</option>
+                  <option value="closed">Mark Closed</option>
+                </select>
+
+                <button 
+                  onClick={() => {
+                    const note = prompt("Enter a note for all selected leads:");
+                    if (note) handleBulkNote(note);
+                  }}
+                  disabled={isBulkUpdating}
+                  className="px-4 py-1.5 bg-slate-950 border border-border rounded-lg text-[10px] font-bold text-slate-300 hover:text-white hover:border-slate-600 transition-all uppercase flex items-center gap-2"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" /> Batch Note
+                </button>
+
+                <button 
+                  onClick={handleBulkCSV}
+                  className="px-4 py-1.5 bg-slate-950 border border-border rounded-lg text-[10px] font-bold text-slate-300 hover:text-white hover:border-slate-600 transition-all uppercase flex items-center gap-2"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> Export Selection
+                </button>
+
+                <button 
+                  onClick={() => {
+                    const selected = leads.filter(l => selectedIds.has(l.id));
+                    selected.forEach((lead, idx) => {
+                      setTimeout(() => {
+                        window.location.href = `mailto:${lead.contactInfo.email}?subject=Redesign Proposal for ${lead.company}&body=${encodeURIComponent(lead.outreach.coldMessage)}`;
+                      }, idx * 1000);
+                    });
+                  }}
+                  className="px-6 py-2 bg-accent text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-accent-hover transition-all shadow-lg shadow-accent/20 flex items-center gap-2"
+                >
+                  <Send className="w-3.5 h-3.5" /> Agent Blast
+                </button>
+              </div>
+
+              <button 
+                onClick={() => setSelectedIds(new Set())}
+                className="p-1 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-white transition-all"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </motion.div>
         )}

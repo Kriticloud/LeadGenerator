@@ -41,7 +41,8 @@
             "poorMobile": { "type": "boolean" },
             "slowSpeed": { "type": "boolean" },
             "brandingConsistency": { "type": "string", "enum": ["poor", "fair", "good"] },
-            "issues": { "type": "array", "items": { "type": "string" } },
+            "websiteProblems": { "type": "array", "items": { "type": "string" } },
+            "brandingIssues": { "type": "array", "items": { "type": "string" } },
             "suggestedImprovements": { "type": "array", "items": { "type": "string" } }
           }
         },

@@ -23,7 +23,8 @@ export function downloadLeadsAsCSV(leads: Lead[]) {
     "LinkedIn",
     "Instagram",
     "Address",
-    "Audit: Issues",
+    "Website Problems",
+    "Branding Issues",
     "Outreach Angle"
   ];
 
@@ -41,7 +42,8 @@ export function downloadLeadsAsCSV(leads: Lead[]) {
     l.contactInfo?.linkedin || "",
     l.contactInfo?.instagram || "",
     l.contactInfo?.address || "",
-    (l.audit?.issues || []).join("; "),
+    (l.audit?.websiteProblems || []).join("; "),
+    (l.audit?.brandingIssues || []).join("; "),
     l.outreach?.bestAngle || ""
   ]);
 

@@ -44,7 +44,8 @@ export interface Lead {
     poorMobile: boolean;
     slowSpeed: boolean;
     brandingConsistency: 'poor' | 'fair' | 'good';
-    issues: string[];
+    websiteProblems: string[];
+    brandingIssues: string[];
     suggestedImprovements: string[];
   };
   

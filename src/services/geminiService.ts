@@ -14,13 +14,24 @@ export async function findLeads(query: string): Promise<Lead[]> {
     3. Qualify leads with scores (1-100) for Lead Score and Urgency Score.
     4. Provide actionable outreach strategy: best angle, cold message, and suggested redesign plan.
 
-    LEAD QUALIFICATION LOGIC:
-    - Outdated Design: +20 to Lead Score (Look for 2010s layouts, non-responsive headers, or static HTML feels)
-    - No SSL: +15 to Urgency Score (Look for 'Not Secure' warnings in search metadata or domain info)
-    - Poor Mobile UX: +20 to Lead Score (Check if the site looks broken on mobile previews or mentions lack of mobile optimization)
-    - Slow Loading: +15 to Lead Score
-    - Inconsistent Branding: +10 to Lead Score (Mismatched logos, clashing colors)
-    - High Competitor Quality: +15 to Probability (Mention if competitors have much better sites)
+    LEAD QUALIFICATION LOGIC (Scoring Guidelines):
+    1. Website Modernity & UX (Max +50 Lead Score):
+       - Legacy Tech/Layout (Flash remnants, table layouts, non-responsive): +25
+       - Poor Visual Hierarchy & Typography: +15
+       - Lack of Accessibility/Contrast: +10
+    2. Engagement & Conversion Signals (Max +50 Urgency Score):
+       - No clear CTA or broken lead funnels/forms: +30
+       - Dormant marketing (last blog post > 1 year, broken social links): +20
+    3. Technical Hygiene (Max +40 Urgency Score):
+       - No SSL ('Not Secure' warning): +25
+       - Slow LCP (Large Contentful Paint) / Performance issues: +15
+    4. Market/Competitor Position (Max +0.3 to Probability):
+       - High Gap: Competitors have modern AI-driven sites while lead is legacy: +0.2
+       - Industry Volatility: Sector is moving to digital-first (e.g. HealthTech, Real Estate): +0.1
+
+    SPECIFICITY REQUIREMENTS:
+    - 'Website Problems Identified': Must be granular (e.g., "Non-standard navigation pattern confusing users" not just "bad UI").
+    - 'Branding Issues Identified': Focus on psychological impact (e.g., "Mismatched color palette reduces trust in professional services" not just "bad colors").
 
     SEARCH STRATEGY:
     - Search for local business directories, Yelp, or industry-specific listings.
@@ -88,7 +99,8 @@ export async function findLeads(query: string): Promise<Lead[]> {
                 poorMobile: { type: Type.BOOLEAN },
                 slowSpeed: { type: Type.BOOLEAN },
                 brandingConsistency: { type: Type.STRING, enum: ["poor", "fair", "good"] },
-                issues: { type: Type.ARRAY, items: { type: Type.STRING } },
+                websiteProblems: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Specific technical or UX problems found on the website." },
+                brandingIssues: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Specific branding, aesthetic, or trust-related issues." },
                 suggestedImprovements: { type: Type.ARRAY, items: { type: Type.STRING } }
               }
             },
