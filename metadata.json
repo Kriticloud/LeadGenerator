@@ -1,0 +1,6 @@
+{
+  "name": "LeadPulse AI",
+  "description": "An AI-powered lead generation agent that finds and qualifies potential business leads using Google Search grounding.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
