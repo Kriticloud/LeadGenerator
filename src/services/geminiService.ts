@@ -16,7 +16,9 @@ export async function findLeads(query: string): Promise<Lead[]> {
     5. Website URL
     6. Description (What they do)
     7. Reasoning (Why they match the query)
-    8. Confidence (0.0 to 1.0)
+    8. Signal (A short 1-2 word status like "Growth", "New Role", "Funding", "Expansion")
+    9. Phone Number (if found)
+    10. Confidence (0.0 to 1.0)
     
     Be specific. Do not hallucinate. If you can't find clear contact info, leave it blank but provide the website.
     Focus on high-quality matches.
@@ -42,11 +44,13 @@ export async function findLeads(query: string): Promise<Lead[]> {
             website: { type: Type.STRING },
             description: { type: Type.STRING },
             reasoning: { type: Type.STRING },
+            signal: { type: Type.STRING },
             confidence: { type: Type.NUMBER },
             contactInfo: {
               type: Type.OBJECT,
               properties: {
                 email: { type: Type.STRING },
+                phone: { type: Type.STRING },
                 linkedin: { type: Type.STRING },
                 twitter: { type: Type.STRING },
               }
