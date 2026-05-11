@@ -42,7 +42,7 @@ export function downloadLeadsAsCSV(leads: Lead[]) {
     l.contactInfo?.linkedin || "",
     l.contactInfo?.instagram || "",
     l.contactInfo?.address || "",
-    (l.audit?.websiteProblems || []).join("; "),
+    (l.audit?.websiteProblems || []).map(p => `${p.issue} (Fix: ${p.solution})`).join("; "),
     (l.audit?.brandingIssues || []).join("; "),
     l.outreach?.bestAngle || ""
   ]);

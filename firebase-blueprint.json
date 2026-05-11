@@ -21,6 +21,8 @@
         "probability": { "type": "number" },
         "businessSize": { "type": "string" },
         "budgetPotential": { "type": "string" },
+        "source": { "type": "string" },
+        "sourceUrl": { "type": "string" },
         "contactInfo": {
           "type": "object",
           "properties": {
@@ -41,9 +43,36 @@
             "poorMobile": { "type": "boolean" },
             "slowSpeed": { "type": "boolean" },
             "brandingConsistency": { "type": "string", "enum": ["poor", "fair", "good"] },
-            "websiteProblems": { "type": "array", "items": { "type": "string" } },
+            "websiteProblems": { 
+              "type": "array", 
+              "items": { 
+                "type": "object",
+                "properties": {
+                  "issue": { "type": "string" },
+                  "solution": { "type": "string" }
+                }
+              } 
+            },
             "brandingIssues": { "type": "array", "items": { "type": "string" } },
-            "suggestedImprovements": { "type": "array", "items": { "type": "string" } }
+            "suggestedImprovements": { "type": "array", "items": { "type": "string" } },
+            "funnelAudit": {
+              "type": "object",
+              "properties": {
+                "ctaAnalysis": { "type": "string" },
+                "leadCaptureAnalysis": { "type": "string" },
+                "suggestedFunnelImprovements": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "step": { "type": "string" },
+                      "improvement": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            },
+            "executiveSummary": { "type": "string" }
           }
         },
         "outreach": {
@@ -52,10 +81,31 @@
             "bestAngle": { "type": "string" },
             "coldMessage": { "type": "string" },
             "redesignStrategy": { "type": "string" },
-            "estimatedImpact": { "type": "string" }
+            "estimatedImpact": { "type": "string" },
+            "whatsappMessage": { "type": "string" },
+            "variations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string" },
+                  "message": { "type": "string" }
+                }
+              }
+            }
           }
         },
         "history": { "type": "array", "items": { "$ref": "LeadActivity" } },
+        "customFields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        },
         "notes": { "type": "string" },
         "followUpAt": { "type": "string", "format": "date-time" },
         "reminderSent": { "type": "boolean" },

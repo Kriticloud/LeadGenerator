@@ -44,9 +44,15 @@ export interface Lead {
     poorMobile: boolean;
     slowSpeed: boolean;
     brandingConsistency: 'poor' | 'fair' | 'good';
-    websiteProblems: string[];
+    websiteProblems: { issue: string; solution: string }[];
     brandingIssues: string[];
     suggestedImprovements: string[];
+    funnelAudit?: {
+      ctaAnalysis: string;
+      leadCaptureAnalysis: string;
+      suggestedFunnelImprovements: { step: string; improvement: string }[];
+    };
+    executiveSummary: string;
   };
   
   // AI Outreach
@@ -56,10 +62,13 @@ export interface Lead {
     redesignStrategy: string;
     estimatedImpact: string;
     whatsappMessage: string;
+    variations?: { status: string; message: string }[];
   };
 
+  source?: string;
   sourceUrl?: string;
   history: LeadActivity[];
+  customFields?: { key: string; value: string }[];
   notes?: string;
   followUpAt?: string;
   reminderSent?: boolean;

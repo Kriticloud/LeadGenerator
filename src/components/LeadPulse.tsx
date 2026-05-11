@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Briefcase, Globe, Mail, Linkedin, Twitter, ExternalLink, ChevronRight, CheckCircle2, 
-  AlertCircle, Loader2, FileSpreadsheet, History, Clock, X, Eye, Phone, Zap, TrendingUp, 
+  AlertCircle, Loader2, FileSpreadsheet, History, Clock, X, Eye, Phone, Zap, TrendingUp, Copy, PlusCircle,
   BarChart3, Target, Shield, Activity, Filter, Database, Save, MessageCircle, Instagram, 
   Facebook, Settings, Layout, PanelLeft, MoreVertical, Trash2, Send, LogOut, User
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { findLeads } from '../services/geminiService';
+import { LeadScoreChart } from './LeadScoreChart';
 import { Lead, LeadActivity, LeadStatus } from '../types';
 import { cn, downloadLeadsAsCSV } from '../lib/utils';
 import { db, auth, OperationType, handleFirestoreError } from '../lib/firebase';
@@ -28,6 +29,8 @@ export default function LeadPulse() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filterStatus, setFilterStatus] = useState<LeadStatus | 'all'>('all');
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [outreachType, setOutreachType] = useState<'email' | 'whatsapp' | null>(null);
+  const [outreachTemplate, setOutreachTemplate] = useState('');
 
   const toggleSelect = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -111,9 +114,40 @@ export default function LeadPulse() {
     const selectedLeads = leads.filter(l => selectedIds.has(l.id));
     downloadLeadsAsCSV(selectedLeads);
   };
+  const personalizeMessage = (template: string, lead: Lead) => {
+    return template
+      .replace(/{{company}}/g, lead.company)
+      .replace(/{{industry}}/g, lead.industry)
+      .replace(/{{name}}/g, lead.name || 'there')
+      .replace(/{{website}}/g, lead.website || '');
+  };
+
+  const handleBulkOutreach = () => {
+    const selectedLeads = leads.filter(l => selectedIds.has(l.id));
+    selectedLeads.forEach((lead, idx) => {
+      setTimeout(() => {
+        if (outreachType === 'email' && lead.contactInfo.email) {
+          const body = encodeURIComponent(personalizeMessage(outreachTemplate, lead));
+          window.open(`mailto:${lead.contactInfo.email}?subject=Redesign Proposal for ${lead.company}&body=${body}`, '_blank');
+        } else if (outreachType === 'whatsapp') {
+          const phone = lead.contactInfo.phone?.replace(/\D/g, '');
+          if (phone) {
+            const text = encodeURIComponent(personalizeMessage(outreachTemplate, lead));
+            window.open(`https://wa.me/${phone}?text=${text}`, '_blank');
+          }
+        }
+      }, idx * 1000);
+    });
+    setOutreachType(null);
+    setSelectedIds(new Set());
+  };
+
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
   const [reminders, setReminders] = useState<Lead[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [isAddingLead, setIsAddingLead] = useState(false);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<any>(null);
 
   // Auth Listener
   useEffect(() => {
@@ -302,6 +336,122 @@ export default function LeadPulse() {
     }
   };
 
+  const addCustomField = async (leadId: string, key: string, value: string) => {
+    if (!key.trim() || !value.trim()) return;
+    try {
+      const leadRef = doc(db, 'leads', leadId);
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) return;
+
+      const currentFields = lead.customFields || [];
+      const newFields = [...currentFields, { key, value }];
+
+      await updateDoc(leadRef, {
+        customFields: newFields,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `leads/${leadId}/customFields`);
+    }
+  };
+
+  const removeCustomField = async (leadId: string, key: string) => {
+    try {
+      const leadRef = doc(db, 'leads', leadId);
+      const lead = leads.find(l => l.id === leadId);
+      if (!lead) return;
+
+      const newFields = (lead.customFields || []).filter(f => f.key !== key);
+
+      await updateDoc(leadRef, {
+        customFields: newFields,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `leads/${leadId}/customFields`);
+    }
+  };
+
+  const createManualLead = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!user) return;
+    
+    const formData = new FormData(e.currentTarget);
+    const company = formData.get('company') as string;
+    const website = formData.get('website') as string;
+    
+    if (!company || !website) return;
+
+    try {
+      const newLead: Partial<Lead> = {
+        id: Math.random().toString(36).substr(2, 9),
+        company,
+        website,
+        name: formData.get('name') as string || 'Unknown',
+        industry: formData.get('industry') as string || 'General',
+        status: 'new',
+        leadScore: 50,
+        urgencyScore: 50,
+        probability: 0.1,
+        source: 'Manual Entry',
+        businessSize: 'SME',
+        contactInfo: {
+          email: formData.get('email') as string || '',
+          phone: '',
+          linkedin: '',
+          twitter: '',
+          instagram: '',
+          facebook: '',
+          address: ''
+        },
+        audit: {
+          outdatedDesign: false,
+          noSSL: false,
+          poorMobile: false,
+          slowSpeed: false,
+          brandingConsistency: 'good',
+          websiteProblems: [],
+          brandingIssues: [],
+          suggestedImprovements: [],
+          executiveSummary: 'Manual lead entry. Audit pending.'
+        },
+        outreach: {
+          bestAngle: 'Personal Introduction',
+          coldMessage: 'Hi, I found your business and wanted to reach out...',
+          whatsappMessage: 'Hi, just saw your website...',
+          redesignStrategy: 'Standard refinement',
+          variations: []
+        },
+        history: [{
+          type: 'discovered',
+          timestamp: new Date().toISOString(),
+          note: 'Manually added to pipeline'
+        }],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await setDoc(doc(db, 'leads', newLead.id!), newLead);
+      setIsAddingLead(false);
+      setSelectedLeadId(newLead.id!);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'leads');
+    }
+  };
+
+  const updateLeadField = async (leadId: string, path: string, value: any) => {
+    try {
+      const leadRef = doc(db, 'leads', leadId);
+      await updateDoc(leadRef, {
+        [path]: value,
+        updatedAt: new Date().toISOString()
+      });
+      setEditingField(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `leads/${leadId}/${path}`);
+    }
+  };
+
   const selectedLead = leads.find(l => l.id === selectedLeadId);
 
   const formatTimestamp = (ts: string) => {
@@ -445,7 +595,15 @@ export default function LeadPulse() {
         <aside className="w-80 bg-surface border-r border-border shrink-0 flex flex-col z-20">
           <div className="p-6 flex-1 overflow-y-auto space-y-8">
             <section>
-              <label className="sidebar-label">Discovery Mode</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="sidebar-label !mb-0">Discovery Mode</label>
+                <button 
+                  onClick={() => setIsAddingLead(true)}
+                  className="p-1 px-2 bg-slate-900 border border-border rounded text-[9px] font-bold text-slate-500 hover:text-accent hover:border-accent transition-all uppercase tracking-tighter flex items-center gap-1"
+                >
+                  <PlusCircle className="w-3 h-3" /> Manual Add
+                </button>
+              </div>
               <form onSubmit={handleSearch} className="space-y-4">
                 <div className="relative">
                   <Search className="absolute left-3 top-3 w-4 h-4 text-slate-600" />
@@ -514,6 +672,11 @@ export default function LeadPulse() {
                     </div>
                     <div className="text-[9px] text-slate-600 font-bold uppercase">High Value</div>
                   </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-800">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4 block">Score Distribution</label>
+                  <LeadScoreChart leads={leads} />
                 </div>
               </div>
             </section>
@@ -676,6 +839,10 @@ export default function LeadPulse() {
 
                     <div className="space-y-2 mb-6">
                       <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                        <Database className="w-3 h-3 text-slate-600" />
+                        <span className="truncate">{lead.source || 'AI Scouting'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400">
                         <Globe className="w-3 h-3 text-slate-600" />
                         <span className="truncate">{lead.website?.replace(/^https?:\/\//, '')}</span>
                       </div>
@@ -748,16 +915,37 @@ export default function LeadPulse() {
               className="w-[450px] bg-surface border-l border-border flex flex-col shadow-2xl relative z-40"
             >
               {/* Panel Header */}
-              <div className="p-6 border-b border-border bg-slate-900/50 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
-                    <BarChart3 className="w-4 h-4 text-accent" />
-                  </div>
-                  <div>
-                    <h3 className="font-display font-bold text-slate-100 uppercase text-xs tracking-wider">Intelligence Data</h3>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Lead ID: {selectedLead.id}</p>
-                  </div>
-                </div>
+                    <div className="p-6 border-b border-border bg-slate-900/50 flex items-center justify-between shrink-0">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center">
+                          <BarChart3 className="w-4 h-4 text-accent" />
+                        </div>
+                        <div>
+                          <h3 className="font-display font-bold text-slate-100 uppercase text-xs tracking-wider">Intelligence Data</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">ID: {selectedLead.id}</p>
+                            <span className="text-[10px] text-slate-700">•</span>
+                            <div className="flex items-center gap-1">
+                              {editingField === 'source' ? (
+                                <input 
+                                  autoFocus
+                                  defaultValue={selectedLead.source}
+                                  onBlur={(e) => updateLeadField(selectedLead.id, 'source', e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Enter' && updateLeadField(selectedLead.id, 'source', e.currentTarget.value)}
+                                  className="bg-slate-900 border border-accent/50 rounded px-1 text-[10px] text-accent font-bold uppercase outline-none"
+                                />
+                              ) : (
+                                <p 
+                                  onClick={() => setEditingField('source')}
+                                  className="text-[10px] text-accent font-bold uppercase tracking-tighter flex items-center gap-1 cursor-pointer hover:underline"
+                                >
+                                  <Database className="w-2.5 h-2.5" /> {selectedLead.source || 'AI Scouting'}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                 <div className="flex items-center gap-2">
                   <button 
                     onClick={() => deleteLead(selectedLead.id)}
@@ -779,8 +967,40 @@ export default function LeadPulse() {
                 <div className="p-6 space-y-8">
                   {/* Company Profile */}
                   <section>
-                    <h4 className="text-2xl font-display font-bold text-white mb-1">{selectedLead.company}</h4>
-                    <p className="text-sm text-slate-400 leading-relaxed mb-6">{selectedLead.description}</p>
+                    <div className="flex items-center justify-between mb-1">
+                      {editingField === 'company' ? (
+                        <input 
+                          autoFocus
+                          defaultValue={selectedLead.company}
+                          onBlur={(e) => updateLeadField(selectedLead.id, 'company', e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && updateLeadField(selectedLead.id, 'company', e.currentTarget.value)}
+                          className="bg-slate-900 border border-accent/50 rounded px-2 py-1 text-2xl font-display font-bold text-white outline-none w-full"
+                        />
+                      ) : (
+                        <h4 
+                          onClick={() => setEditingField('company')}
+                          className="text-2xl font-display font-bold text-white cursor-pointer hover:text-accent transition-colors"
+                        >
+                          {selectedLead.company}
+                        </h4>
+                      )}
+                    </div>
+                    
+                    {editingField === 'description' ? (
+                      <textarea
+                        autoFocus
+                        defaultValue={selectedLead.description}
+                        onBlur={(e) => updateLeadField(selectedLead.id, 'description', e.target.value)}
+                        className="w-full bg-slate-900 border border-accent/50 rounded p-2 text-sm text-slate-400 leading-relaxed mb-6 focus:outline-none h-24"
+                      />
+                    ) : (
+                      <p 
+                        onClick={() => setEditingField('description')}
+                        className="text-sm text-slate-400 leading-relaxed mb-6 cursor-pointer hover:text-slate-300 transition-colors"
+                      >
+                        {selectedLead.description}
+                      </p>
+                    )}
                     
                     <div className="flex flex-wrap gap-2 mb-6">
                       <select 
@@ -821,6 +1041,14 @@ export default function LeadPulse() {
                         </a>
                       )}
                     </div>
+                    {selectedLead.sourceUrl && (
+                      <div className="mt-3">
+                        <a href={selectedLead.sourceUrl} target="_blank" className="flex items-center gap-2 text-[10px] text-accent/60 hover:text-accent transition-colors">
+                          <ExternalLink className="w-3 h-3" />
+                          <span className="font-bold uppercase tracking-widest">Found via {selectedLead.source || 'Scouting'}</span>
+                        </a>
+                      </div>
+                    )}
                   </section>
 
                   {/* Audit Matrix */}
@@ -901,14 +1129,45 @@ export default function LeadPulse() {
                       </div>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-6">
+                      {selectedLead.audit.executiveSummary && (
+                        <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl relative overflow-hidden group">
+                           <div className="absolute top-0 left-0 w-1 h-full bg-accent opacity-50"></div>
+                           <span className="text-[10px] font-bold text-accent uppercase tracking-widest mb-2 block">Executive Audit Summary</span>
+                           {editingField === 'audit.executiveSummary' ? (
+                             <textarea 
+                                autoFocus
+                                defaultValue={selectedLead.audit.executiveSummary}
+                                onBlur={(e) => updateLeadField(selectedLead.id, 'audit.executiveSummary', e.target.value)}
+                                className="w-full bg-slate-900 border border-accent/30 rounded p-2 text-xs text-slate-300 leading-relaxed font-medium focus:outline-none h-20"
+                             />
+                           ) : (
+                             <p 
+                              onClick={() => setEditingField('audit.executiveSummary')}
+                              className="text-xs text-slate-300 leading-relaxed font-medium italic cursor-pointer hover:text-white transition-colors"
+                             >
+                               {selectedLead.audit.executiveSummary}
+                             </p>
+                           )}
+                        </div>
+                      )}
+
                       <div>
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block">Website Problems</span>
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {selectedLead.audit.websiteProblems?.map((issue, idx) => (
-                            <span key={idx} className="px-2 py-1 bg-danger/10 text-danger text-[10px] font-bold rounded-lg border border-danger/20">
-                              {issue}
-                            </span>
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3 block">Website Problems & Solutions</span>
+                        <div className="space-y-3 mb-6">
+                          {selectedLead.audit.websiteProblems?.map((prob, idx) => (
+                            <div key={idx} className="p-3 bg-slate-900/50 border border-border rounded-xl group hover:border-accent/30 transition-all">
+                              <div className="flex items-start gap-2 mb-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-danger mt-1.5 shrink-0 shadow-[0_0_8px_rgba(244,63,94,0.4)]" />
+                                <span className="text-[11px] font-bold text-slate-200">{prob.issue}</span>
+                              </div>
+                              <div className="pl-3.5 border-l border-slate-800 ml-0.5">
+                                <p className="text-[10px] text-emerald-400 font-medium leading-relaxed">
+                                  <span className="text-slate-500 uppercase tracking-tighter mr-2 font-bold">Suggested Fix</span>
+                                  {prob.solution}
+                                </p>
+                              </div>
+                            </div>
                           ))}
                         </div>
                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-2 block">Branding Issues</span>
@@ -923,6 +1182,74 @@ export default function LeadPulse() {
                     </div>
                   </section>
 
+                  {/* Conversion Funnel Analysis */}
+                  {selectedLead.audit.funnelAudit && (
+                    <section className="bg-slate-900/40 border border-border rounded-2xl p-6">
+                      <div className="flex items-center gap-2 mb-6">
+                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                        <h5 className="text-xs font-bold text-slate-100 uppercase tracking-widest">Conversion Funnel Audit</h5>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">CTA Analysis</span>
+                            {editingField === 'audit.funnelAudit.ctaAnalysis' ? (
+                              <textarea
+                                autoFocus
+                                defaultValue={selectedLead.audit.funnelAudit.ctaAnalysis}
+                                onBlur={(e) => updateLeadField(selectedLead.id, 'audit.funnelAudit.ctaAnalysis', e.target.value)}
+                                className="w-full bg-slate-900 border border-accent/30 rounded p-2 text-[11px] text-slate-300 focus:outline-none h-20"
+                              />
+                            ) : (
+                              <p 
+                                onClick={() => setEditingField('audit.funnelAudit.ctaAnalysis')}
+                                className="text-[11px] text-slate-400 leading-relaxed italic cursor-pointer hover:text-slate-200"
+                              >
+                                {selectedLead.audit.funnelAudit.ctaAnalysis}
+                              </p>
+                            )}
+                          </div>
+                          <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Lead Capture Form</span>
+                            {editingField === 'audit.funnelAudit.leadCaptureAnalysis' ? (
+                              <textarea
+                                autoFocus
+                                defaultValue={selectedLead.audit.funnelAudit.leadCaptureAnalysis}
+                                onBlur={(e) => updateLeadField(selectedLead.id, 'audit.funnelAudit.leadCaptureAnalysis', e.target.value)}
+                                className="w-full bg-slate-900 border border-accent/30 rounded p-2 text-[11px] text-slate-300 focus:outline-none h-20"
+                              />
+                            ) : (
+                              <p 
+                                onClick={() => setEditingField('audit.funnelAudit.leadCaptureAnalysis')}
+                                className="text-[11px] text-slate-400 leading-relaxed italic cursor-pointer hover:text-slate-200"
+                              >
+                                {selectedLead.audit.funnelAudit.leadCaptureAnalysis}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3 block text-center">Friction-Reduction Roadmap</span>
+                          <div className="grid gap-3">
+                            {selectedLead.audit.funnelAudit.suggestedFunnelImprovements.map((imp, idx) => (
+                              <div key={idx} className="flex gap-4 p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl group hover:border-emerald-500/30 transition-all">
+                                <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0 text-emerald-400 font-bold text-xs border border-emerald-500/20">
+                                  {idx + 1}
+                                </div>
+                                <div>
+                                  <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-tighter mb-1">{imp.step}</div>
+                                  <p className="text-[11px] text-slate-300 font-medium leading-relaxed">{imp.improvement}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  )}
+
                   {/* Outreach Strategy */}
                   <section>
                     <div className="flex items-center gap-2 mb-6">
@@ -932,53 +1259,206 @@ export default function LeadPulse() {
                     
                     <div className="p-5 bg-accent/5 border border-accent/20 rounded-2xl mb-4">
                       <div className="text-[10px] font-bold text-accent uppercase tracking-widest mb-2">Best Outreach Angle</div>
-                      <p className="text-sm text-slate-300 font-medium italic">"{selectedLead.outreach.bestAngle}"</p>
+                      {editingField === 'outreach.bestAngle' ? (
+                        <input 
+                          autoFocus
+                          defaultValue={selectedLead.outreach.bestAngle}
+                          onBlur={(e) => updateLeadField(selectedLead.id, 'outreach.bestAngle', e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && updateLeadField(selectedLead.id, 'outreach.bestAngle', e.currentTarget.value)}
+                          className="w-full bg-slate-900 border border-accent/30 rounded p-1 text-sm text-slate-300 font-medium outline-none"
+                        />
+                      ) : (
+                        <p 
+                          onClick={() => setEditingField('outreach.bestAngle')}
+                          className="text-sm text-slate-300 font-medium italic cursor-pointer hover:text-white transition-colors"
+                        >
+                          "{selectedLead.outreach.bestAngle}"
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-4">
-                      <div className="dashboard-card !p-5 !bg-slate-900 border-border">
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center justify-between">
-                          AI Redesign Plan
-                          <Zap className="w-3 h-3 text-accent" />
+                        <div className="dashboard-card !p-5 !bg-slate-900 border-border">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center justify-between">
+                            AI Redesign Plan
+                            <Zap className="w-3 h-3 text-accent" />
+                          </div>
+                          {editingField === 'outreach.redesignStrategy' ? (
+                            <textarea
+                              autoFocus
+                              defaultValue={selectedLead.outreach.redesignStrategy}
+                              onBlur={(e) => updateLeadField(selectedLead.id, 'outreach.redesignStrategy', e.target.value)}
+                              className="w-full bg-slate-950 border border-accent/30 rounded p-2 text-sm text-slate-300 focus:outline-none h-24"
+                            />
+                          ) : (
+                            <p 
+                              onClick={() => setEditingField('outreach.redesignStrategy')}
+                              className="text-sm text-slate-400 line-clamp-3 hover:line-clamp-none transition-all cursor-pointer hover:text-slate-200"
+                            >
+                              {selectedLead.outreach.redesignStrategy}
+                            </p>
+                          )}
                         </div>
-                        <p className="text-sm text-slate-400 line-clamp-3 hover:line-clamp-none transition-all">{selectedLead.outreach.redesignStrategy}</p>
-                      </div>
 
-                      <div className="relative">
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Copywriter Proposal</div>
-                        <div className="p-5 bg-slate-900 rounded-2xl border border-border font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
-                          {selectedLead.outreach.coldMessage}
+                        <div className="relative">
+                          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Copywriter Proposal</div>
+                          {editingField === 'outreach.coldMessage' ? (
+                            <textarea
+                              autoFocus
+                              defaultValue={selectedLead.outreach.coldMessage}
+                              onBlur={(e) => updateLeadField(selectedLead.id, 'outreach.coldMessage', e.target.value)}
+                              className="w-full h-48 bg-slate-900 border border-accent/30 rounded-2xl p-5 text-xs text-slate-300 leading-relaxed focus:outline-none font-mono"
+                            />
+                          ) : (
+                            <div 
+                              onClick={() => setEditingField('outreach.coldMessage')}
+                              className="p-5 bg-slate-900 rounded-2xl border border-border font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto cursor-pointer hover:border-accent transition-all"
+                            >
+                              {selectedLead.outreach.coldMessage}
+                            </div>
+                          )}
+                          {!editingField && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(selectedLead.outreach.coldMessage);
+                              }}
+                              className="absolute top-10 right-4 p-2 bg-accent text-white rounded-lg shadow-lg hover:bg-accent-hover transition-all"
+                              title="Copy Email Copy"
+                            >
+                              <Save className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(selectedLead.outreach.coldMessage);
-                          }}
-                          className="absolute top-10 right-4 p-2 bg-accent text-white rounded-lg shadow-lg hover:bg-accent-hover transition-all"
-                          title="Copy Email Copy"
-                        >
-                          <Save className="w-4 h-4" />
-                        </button>
-                      </div>
 
-                      <div className="relative">
-                        <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                          <MessageCircle className="w-3 h-3" /> WhatsApp Opener
+                        <div className="relative">
+                          <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <MessageCircle className="w-3 h-3" /> WhatsApp Opener
+                          </div>
+                          {editingField === 'outreach.whatsappMessage' ? (
+                            <textarea
+                              autoFocus
+                              defaultValue={selectedLead.outreach.whatsappMessage}
+                              onBlur={(e) => updateLeadField(selectedLead.id, 'outreach.whatsappMessage', e.target.value)}
+                              className="w-full h-24 bg-emerald-500/5 border border-accent/30 rounded-2xl p-4 text-xs text-slate-300 italic focus:outline-none"
+                            />
+                          ) : (
+                            <div 
+                              onClick={() => setEditingField('outreach.whatsappMessage')}
+                              className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 font-sans text-xs text-slate-300 italic leading-relaxed cursor-pointer hover:border-emerald-500 transition-all font-medium"
+                            >
+                              "{selectedLead.outreach.whatsappMessage}"
+                            </div>
+                          )}
+                          {!editingField && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(selectedLead.outreach.whatsappMessage);
+                              }}
+                              className="absolute top-10 right-4 p-2 bg-emerald-500 text-white rounded-lg shadow-lg hover:bg-emerald-600 transition-all"
+                              title="Copy WhatsApp Copy"
+                            >
+                              <Save className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
-                        <div className="p-4 bg-emerald-500/5 rounded-2xl border border-emerald-500/10 font-sans text-xs text-slate-300 italic leading-relaxed">
-                          "{selectedLead.outreach.whatsappMessage}"
+
+                      {selectedLead.outreach.variations && selectedLead.outreach.variations.length > 0 && (
+                        <div className="pt-4 border-t border-slate-800 mt-6">
+                           <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-4">Strategic Follow-ups & Variations</div>
+                           <div className="space-y-3">
+                              {selectedLead.outreach.variations.map((v, i) => (
+                                <div key={i} className="p-4 bg-slate-950/40 border border-slate-800 rounded-xl group hover:border-accent/20 transition-all">
+                                  <div className="flex justify-between items-center mb-2">
+                                     <span className="px-2 py-0.5 bg-slate-800 text-[9px] font-bold text-slate-400 rounded uppercase tracking-tighter">{v.status}</span>
+                                     <button 
+                                      onClick={() => navigator.clipboard.writeText(v.message)}
+                                      className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-all"
+                                     >
+                                        <Copy className="w-3 h-3" />
+                                     </button>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 leading-relaxed italic">"{v.message}"</p>
+                                </div>
+                              ))}
+                           </div>
                         </div>
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(selectedLead.outreach.whatsappMessage);
-                          }}
-                          className="absolute top-10 right-4 p-2 bg-emerald-500 text-white rounded-lg shadow-lg hover:bg-emerald-600 transition-all"
-                          title="Copy WhatsApp Copy"
-                        >
-                          <Save className="w-4 h-4" />
-                        </button>
-                      </div>
+                      )}
                     </div>
                   </section>
+
+                   {/* Custom Fields */}
+                   <section>
+                     <div className="flex items-center gap-2 mb-6">
+                       <PlusCircle className="w-4 h-4 text-accent" />
+                       <h5 className="text-xs font-bold text-slate-100 uppercase tracking-widest">Custom Field Intel</h5>
+                     </div>
+
+                     <div className="space-y-3 mb-6">
+                       {selectedLead.customFields?.map((field, idx) => (
+                         <div key={idx} className="flex items-center gap-3 p-3 bg-slate-900/50 border border-border rounded-xl group hover:border-accent/30 transition-all">
+                           <div className="flex-1">
+                             <div className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter mb-0.5">{field.key}</div>
+                             <div className="text-xs text-slate-200 font-medium">{field.value}</div>
+                           </div>
+                           <button 
+                             onClick={() => removeCustomField(selectedLead.id, field.key)}
+                             className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-danger/10 text-slate-600 hover:text-danger rounded transition-all"
+                           >
+                             <Trash2 className="w-3.5 h-3.5" />
+                           </button>
+                         </div>
+                       ))}
+                       
+                       <div className="p-4 bg-slate-950 border border-dashed border-border rounded-xl">
+                         <div className="grid grid-cols-2 gap-2 mb-2">
+                           <input 
+                             id="new-field-key"
+                             placeholder="Field Label"
+                             onKeyDown={(e) => {
+                               if (e.key === 'Enter') {
+                                 const valInput = document.getElementById('new-field-value') as HTMLInputElement;
+                                 valInput.focus();
+                               }
+                             }}
+                             className="bg-slate-900 border border-border rounded-lg px-3 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-accent transition-all uppercase font-bold tracking-widest"
+                           />
+                           <input 
+                             id="new-field-value"
+                             placeholder="Value"
+                             onKeyDown={(e) => {
+                               if (e.key === 'Enter') {
+                                 const keyInput = document.getElementById('new-field-key') as HTMLInputElement;
+                                 const valInput = e.target as HTMLInputElement;
+                                 if (keyInput.value && valInput.value) {
+                                   addCustomField(selectedLead.id, keyInput.value, valInput.value);
+                                   keyInput.value = '';
+                                   valInput.value = '';
+                                   keyInput.focus();
+                                 }
+                               }
+                             }}
+                             className="bg-slate-900 border border-border rounded-lg px-3 py-2 text-[10px] text-slate-200 focus:outline-none focus:border-accent transition-all"
+                           />
+                         </div>
+                         <button 
+                           onClick={() => {
+                             const keyInput = document.getElementById('new-field-key') as HTMLInputElement;
+                             const valInput = document.getElementById('new-field-value') as HTMLInputElement;
+                             if (keyInput.value && valInput.value) {
+                               addCustomField(selectedLead.id, keyInput.value, valInput.value);
+                               keyInput.value = '';
+                               valInput.value = '';
+                             }
+                           }}
+                           className="w-full py-2 bg-slate-800 hover:bg-accent text-white text-[9px] font-bold uppercase rounded-lg transition-all tracking-widest"
+                         >
+                           Append Intelligence
+                         </button>
+                       </div>
+                     </div>
+                   </section>
 
                   {/* History & Notes */}
                   <section className="pb-10">
@@ -1149,14 +1629,8 @@ export default function LeadPulse() {
                 <div className="flex bg-slate-950 border border-border rounded-lg p-1">
                   <button 
                     onClick={() => {
-                      const selected = leads.filter(l => selectedIds.has(l.id));
-                      selected.forEach((lead, idx) => {
-                        if (lead.contactInfo.email) {
-                          setTimeout(() => {
-                            window.open(`mailto:${lead.contactInfo.email}?subject=Redesign Proposal for ${lead.company}&body=${encodeURIComponent(lead.outreach.coldMessage)}`, '_blank');
-                          }, idx * 1000);
-                        }
-                      });
+                      setOutreachType('email');
+                      setOutreachTemplate(`Hi {{name}},\n\nI was looking at {{company}}'s digital presence and noticed some areas where a redesign could significantly impact your conversion rates, especially considering your position in the {{industry}} sector.\n\nWould you be open to a quick chat about a strategy for {{website}}?`);
                     }}
                     className="px-4 py-2 text-white rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-accent transition-all flex items-center gap-2"
                     title="Bulk Email"
@@ -1165,15 +1639,8 @@ export default function LeadPulse() {
                   </button>
                   <button 
                     onClick={() => {
-                      const selected = leads.filter(l => selectedIds.has(l.id));
-                      selected.forEach((lead, idx) => {
-                        const phone = lead.contactInfo.phone?.replace(/\D/g, '');
-                        if (phone) {
-                          setTimeout(() => {
-                            window.open(`https://wa.me/${phone}?text=${encodeURIComponent(lead.outreach.whatsappMessage)}`, '_blank');
-                          }, idx * 1000);
-                        }
-                      });
+                      setOutreachType('whatsapp');
+                      setOutreachTemplate(`Hi {{name}} from {{company}}, I noticed some exciting opportunities to level up your website at {{website}}. Would you be open to a quick chat about a redesign strategy?`);
                     }}
                     className="px-4 py-2 text-white rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500 transition-all flex items-center gap-2"
                     title="Bulk WhatsApp"
@@ -1191,6 +1658,181 @@ export default function LeadPulse() {
               </button>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bulk Outreach Preview Modal */}
+      <AnimatePresence>
+        {outreachType && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-surface border border-border w-full max-w-4xl max-h-[80vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-border bg-slate-900/50 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", outreachType === 'email' ? "bg-accent/20 text-accent" : "bg-emerald-500/20 text-emerald-500")}>
+                    {outreachType === 'email' ? <Mail className="w-5 h-5" /> : <MessageCircle className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100 uppercase tracking-widest">Refine Bulk {outreachType} Outreach</h3>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Selected Leads: {selectedIds.size}</p>
+                  </div>
+                </div>
+                <button onClick={() => setOutreachType(null)} className="p-2 hover:bg-slate-800 rounded-lg"><X className="w-5 h-5" /></button>
+              </div>
+
+              <div className="flex-1 overflow-hidden flex">
+                <div className="w-1/2 p-6 border-r border-border overflow-y-auto">
+                  <label className="sidebar-label flex justify-between">
+                    Template Editor
+                    <span className="text-[8px] opacity-50">Placeholders: {"{{name}}"}, {"{{company}}"}, {"{{website}}"}</span>
+                  </label>
+                  <textarea
+                    value={outreachTemplate}
+                    onChange={(e) => setOutreachTemplate(e.target.value)}
+                    className="w-full h-80 bg-slate-900 border border-border rounded-2xl p-6 text-xs text-slate-200 leading-relaxed focus:outline-none focus:ring-2 focus:ring-accent/50 resize-none font-mono"
+                  />
+                </div>
+                
+                <div className="w-1/2 bg-slate-950/30 overflow-y-auto">
+                  <div className="p-6 sticky top-0 bg-slate-950/80 backdrop-blur-md border-b border-border z-10">
+                    <label className="sidebar-label !mb-0">Preview Personalized Stream</label>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    {leads.filter(l => selectedIds.has(l.id)).map(lead => (
+                      <div key={lead.id} className="p-4 bg-slate-900/50 border border-border rounded-xl">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{lead.company}</span>
+                          <div className="flex gap-2">
+                            {(!lead.contactInfo.email && outreachType === 'email') && (
+                              <span title="No Email Found">
+                                <AlertCircle className="w-3 h-3 text-danger" />
+                              </span>
+                            )}
+                            {(!lead.contactInfo.phone && outreachType === 'whatsapp') && (
+                              <span title="No Phone Found">
+                                <AlertCircle className="w-3 h-3 text-danger" />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-slate-300 italic leading-relaxed">
+                          "{personalizeMessage(outreachTemplate, lead)}"
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-border bg-slate-900/50 flex justify-end gap-3 shrink-0">
+                <button onClick={() => setOutreachType(null)} className="px-6 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-white transition-all">Cancel</button>
+                <button 
+                  onClick={handleBulkOutreach}
+                  className={cn("px-8 py-2 text-[10px] font-bold text-white uppercase tracking-widest rounded-xl transition-all shadow-lg", outreachType === 'email' ? "bg-accent hover:bg-accent-hover shadow-accent/20" : "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20")}
+                >
+                  <Send className="w-3.5 h-3.5 inline mr-2" />
+                  Confirm & Blast {selectedIds.size} Leads
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Manual Lead Modal */}
+      <AnimatePresence>
+        {isAddingLead && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-surface border border-border w-full max-w-lg rounded-3xl shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-border bg-slate-900/50 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-accent/20 text-accent flex items-center justify-center">
+                    <PlusCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-100 uppercase tracking-widest">Add Intelligence Asset</h3>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Manual Pipeline Entry</p>
+                  </div>
+                </div>
+                <button onClick={() => setIsAddingLead(false)} className="p-2 hover:bg-slate-800 rounded-lg"><X className="w-5 h-5" /></button>
+              </div>
+
+              <form onSubmit={createManualLead} className="p-8 space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Company Identity</label>
+                    <input 
+                      name="company"
+                      required
+                      placeholder="e.g. Acme Legal Partners"
+                      className="w-full bg-slate-900 border border-border rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-accent transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Primary Domain</label>
+                    <input 
+                      name="website"
+                      required
+                      placeholder="e.g. https://acmelegal.com"
+                      className="w-full bg-slate-900 border border-border rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-accent transition-all"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Contact Name</label>
+                      <input 
+                        name="name"
+                        placeholder="John Doe"
+                        className="w-full bg-slate-900 border border-border rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-accent transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Industry Vertical</label>
+                      <input 
+                        name="industry"
+                        placeholder="Legal Services"
+                        className="w-full bg-slate-900 border border-border rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-accent transition-all"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 block">Direct Email</label>
+                    <input 
+                      name="email"
+                      type="email"
+                      placeholder="contact@acmelegal.com"
+                      className="w-full bg-slate-900 border border-border rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-accent transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button 
+                    type="button"
+                    onClick={() => setIsAddingLead(false)}
+                    className="flex-1 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 py-3 bg-accent text-white text-[10px] font-bold uppercase tracking-widest rounded-xl hover:bg-accent-hover transition-all shadow-lg shadow-accent/20"
+                  >
+                    Forge Asset
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
